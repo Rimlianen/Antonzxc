@@ -1,0 +1,63 @@
+import java.io.InputStream;
+import java.util.Properties;
+import javax.mail.*;
+import javax.mail.internet.MimeBodyPart;
+import javax.mail.internet.MimeMultipart;
+
+public class EmailAttachmentReader {
+    public static void main(String[] args) {
+        // Параметры для подключения к почтовому серверу
+        String host = "your.email.provider.com";
+        String username = "your_email@example.com";
+        String password = "your_email_password";
+
+        // Устанавливаем свойства для соединения через протокол IMAP
+        Properties properties = new Properties();
+        properties.setProperty("mail.store.protocol", "imaps");
+
+        try {
+            // Создаем сессию для подключения к почтовому серверу
+            Session session = Session.getInstance(properties, null);
+            Store store = session.getStore();
+            store.connect(host, username, password);
+
+            // Открываем папку "INBOX"
+            Folder inbox = store.getFolder("INBOX");
+            inbox.open(Folder.READ_ONLY);
+
+            // Получаем последнее сообщение из папки "INBOX"
+            Message lastMessage = inbox.getMessage(inbox.getMessageCount());
+
+            // Читаем только последнее сообщение
+            Object content = lastMessage.getContent();
+            if (content instanceof MimeMultipart) {
+                // Если содержимое сообщения является MIME-мультипарт объектом
+                MimeMultipart multipart = (MimeMultipart) content;
+                for (int i = 0; i < multipart.getCount(); i++) {
+                    // Перебираем все части мультипарт-сообщения
+                    BodyPart bodyPart = multipart.getBodyPart(i);
+                    if (bodyPart.getDisposition() != null &&
+                            bodyPart.getDisposition().equalsIgnoreCase(Part.ATTACHMENT)) {
+                        // Если это вложение
+                        String contentType = bodyPart.getContentType();
+                        if (contentType.startsWith("text/plain")) {
+                            // Если вложение является текстовым файлом
+                            InputStream inputStream = bodyPart.getInputStream();
+                            byte[] buffer = new byte[8192];
+                            int bytesRead;
+                            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                                System.out.write(buffer, 0, bytesRead);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Закрываем папку и отключаемся от почтового сервера
+            inbox.close(false);
+            store.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
