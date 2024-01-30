@@ -1,0 +1,83 @@
+import android.os.AsyncTask;
+import android.util.Log;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+
+import javax.mail.BodyPart;
+import javax.mail.Folder;
+import javax.mail.Message;
+import javax.mail.MessagingException;
+import javax.mail.Multipart;
+import javax.mail.Session;
+import javax.mail.Store;
+import javax.mail.internet.MimeBodyPart;
+
+public class EmailAttachmentReader {
+    private static final String TAG = "EmailAttachmentReader";
+
+    public void readEmailAttachments() {
+        // Параметры для подключения к почтовому серверу
+        String host = "your.email.provider.com";
+        String username = "your_email@example.com";
+        String password = "your_email_password";
+
+        // Устанавливаем свойства для соединения через протокол IMAP
+        Properties properties = new Properties();
+        properties.setProperty("mail.store.protocol", "imaps");
+
+        // Выполняем сетевую операцию в фоновом потоке, чтобы избежать блокировки пользовательского интерфейса
+        new AsyncTask<Void, Void, Void>() {
+            @Override
+            protected Void doInBackground(Void... voids) {
+                try {
+                    // Создаем сессию для подключения к почтовому серверу
+                    Session session = Session.getInstance(properties, null);
+                    Store store = session.getStore();
+                    store.connect(host, username, password);
+
+                    // Открываем папку "INBOX"
+                    Folder inbox = store.getFolder("INBOX");
+                    inbox.open(Folder.READ_ONLY);
+
+                    // Получаем последнее сообщение из папки "INBOX"
+                    Message lastMessage = inbox.getMessage(inbox.getMessageCount());
+
+                    // Читаем содержимое последнего сообщения
+                    Object content = lastMessage.getContent();
+                    if (content instanceof Multipart) {
+                        // Если содержимое сообщения является MIME-мультипарт объектом
+                        Multipart multipart = (Multipart) content;
+                        for (int i = 0; i < multipart.getCount(); i++) {
+                            // Перебираем все части мультипарт-сообщения
+                            BodyPart bodyPart = multipart.getBodyPart(i);
+                            if (bodyPart.getDisposition() != null &&
+                                    bodyPart.getDisposition().equalsIgnoreCase(MimeBodyPart.ATTACHMENT)) {
+                                // Если это вложение
+                                String contentType = bodyPart.getContentType();
+                                if (contentType.startsWith("text/plain")) {
+                                    // Если вложение является текстовым файлом
+                                    try (InputStream inputStream = bodyPart.getInputStream()) {
+                                        byte[] buffer = new byte[8192];
+                                        int bytesRead;
+                                        while ((bytesRead = inputStream.read(buffer)) != -1) {
+                                            Log.d(TAG, new String(buffer, 0, bytesRead));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Закрываем папку и отключаемся от почтового сервера
+                    inbox.close(false);
+                    store.close();
+                } catch (MessagingException | IOException e) {
+                    Log.e(TAG, "Error reading email", e);
+                }
+                return null;
+            }
+        }.execute();
+    }
+}
